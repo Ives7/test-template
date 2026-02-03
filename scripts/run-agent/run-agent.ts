@@ -1,8 +1,9 @@
+import type { AgentContext, SDKMessage } from './types';
+
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 import { BackendClient } from './backend-client';
 import { SessionManager } from './session-manager';
-import type { AgentContext, SDKMessage } from './types';
 
 // Environment variables injected by SandboxService.startAgent
 const BACKEND_URL = process.env.BACKEND_URL;
@@ -25,24 +26,32 @@ const client = new BackendClient(BACKEND_URL, ACTIVITY_ID);
 const sessionManager = new SessionManager(client);
 
 /**
+ * Build route path instructions for the agent
+ */
+function buildRoutePathInstructions(routePath: string): string {
+  return `## 页面路由约束
+
+你必须在以下路由路径创建页面文件：
+- 路由路径: \`/${routePath}\`
+- 对应的文件位置: \`app/${routePath}/page.tsx\`
+
+确保页面组件是默认导出，且文件结构符合 Next.js App Router 规范。`;
+}
+
+/**
  * Build full prompt for first conversation (includes system prompts)
  */
 function buildFullPrompt(
   systemPrompts: string[],
   userPrompt: string,
+  routePath: string,
 ): string {
   const systemPart = systemPrompts.filter(Boolean).join('\n\n');
+  const routeInstructions = buildRoutePathInstructions(routePath);
 
-  if (!systemPart) {
-    return userPrompt;
-  }
+  const parts = [systemPart, routeInstructions, `User Request:\n${userPrompt}`];
 
-  return `${systemPart}
-
----
-
-User Request:
-${userPrompt}`;
+  return parts.filter(Boolean).join('\n\n---\n\n');
 }
 
 /**
@@ -52,17 +61,22 @@ function buildFallbackPrompt(
   systemPrompts: string[],
   messages: Array<{ role: string; content: string }>,
   currentPrompt: string,
+  routePath: string,
 ): string {
   const systemPart = systemPrompts.filter(Boolean).join('\n\n');
+  const routeInstructions = buildRoutePathInstructions(routePath);
 
   // Format historical messages
   const historyPart = messages
-    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
     .join('\n\n');
 
-  const parts = [systemPart, historyPart, `User: ${currentPrompt}`].filter(
-    Boolean,
-  );
+  const parts = [
+    systemPart,
+    routeInstructions,
+    historyPart,
+    `User: ${currentPrompt}`,
+  ].filter(Boolean);
 
   return parts.join('\n\n---\n\n');
 }
@@ -73,8 +87,8 @@ function buildFallbackPrompt(
 function extractTextContent(message: SDKMessage): string {
   if (message.type === 'assistant' && message.message?.content) {
     return message.message.content
-      .filter((block) => block.type === 'text' && block.text)
-      .map((block) => block.text)
+      .filter(block => block.type === 'text' && block.text)
+      .map(block => block.text)
       .join('\n');
   }
   return '';
@@ -92,7 +106,7 @@ async function handleMessage(message: SDKMessage): Promise<void> {
       }
       break;
 
-    case 'assistant':
+    case 'assistant': {
       // Report AI response to backend
       const content = extractTextContent(message);
       if (content) {
@@ -103,6 +117,7 @@ async function handleMessage(message: SDKMessage): Promise<void> {
         });
       }
       break;
+    }
 
     case 'result':
       if (message.subtype === 'success') {
@@ -113,11 +128,11 @@ async function handleMessage(message: SDKMessage): Promise<void> {
       }
       break;
 
-    case 'partial_message':
+    case 'partial_message': {
       // Optional: streaming output support
       const partialContent = message.content
-        ?.filter((block) => block.type === 'text' && block.text)
-        .map((block) => block.text)
+        ?.filter(block => block.type === 'text' && block.text)
+        .map(block => block.text)
         .join('');
       if (partialContent) {
         await client.reportProgress({
@@ -128,6 +143,7 @@ async function handleMessage(message: SDKMessage): Promise<void> {
         });
       }
       break;
+    }
   }
 }
 
@@ -213,10 +229,15 @@ export async function main(): Promise<void> {
         context.systemPrompts,
         context.messages,
         context.currentPrompt,
+        context.routePath,
       );
     } else {
       // First conversation: build prompt with system prompts only
-      prompt = buildFullPrompt(context.systemPrompts, context.currentPrompt);
+      prompt = buildFullPrompt(
+        context.systemPrompts,
+        context.currentPrompt,
+        context.routePath,
+      );
     }
 
     await runWithFullPrompt(prompt);
@@ -226,4 +247,3 @@ export async function main(): Promise<void> {
     process.exit(1);
   }
 }
-

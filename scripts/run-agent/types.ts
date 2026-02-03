@@ -15,6 +15,8 @@ export interface AgentContext {
   currentPrompt: string;
   /** Historical messages (fallback when session resume fails) */
   messages: Array<{ role: string; content: string }>;
+  /** Route path where the page should be created (e.g., 'act/1234567890') */
+  routePath: string;
 }
 
 /**
