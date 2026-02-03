@@ -1,12 +1,14 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-import { BackendClient } from './lib/backend-client';
-import { SessionManager } from './lib/session-manager';
-import type { AgentContext, SDKMessage } from './lib/types';
+import { BackendClient } from './backend-client';
+import { SessionManager } from './session-manager';
+import type { AgentContext, SDKMessage } from './types';
 
 // Environment variables injected by SandboxService.startAgent
 const BACKEND_URL = process.env.BACKEND_URL;
 const ACTIVITY_ID = process.env.ACTIVITY_ID;
+// Optional: Custom API base URL for Claude (e.g., Vercel API Gateway)
+const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL;
 
 // Validate required environment variables
 if (!BACKEND_URL) {
@@ -142,6 +144,7 @@ async function runWithResume(
     allowDangerouslySkipPermissions: true,
     cwd: process.cwd(),
     resume: sessionId,
+    ...(ANTHROPIC_BASE_URL && { apiUrl: ANTHROPIC_BASE_URL }),
   };
 
   for await (const message of query({
@@ -161,6 +164,7 @@ async function runWithFullPrompt(prompt: string): Promise<void> {
     permissionMode: 'bypassPermissions' as const,
     allowDangerouslySkipPermissions: true,
     cwd: process.cwd(),
+    ...(ANTHROPIC_BASE_URL && { apiUrl: ANTHROPIC_BASE_URL }),
   };
 
   for await (const message of query({

@@ -6,10 +6,6 @@ const nextConfig: NextConfig = {
     parallelServerCompiles: true,
     parallelServerBuildTraces: true,
     serverMinification: false,
-    webpackBuildWorker: true,
-    turbopackTreeShaking: true,
-    turbopackRemoveUnusedImports: true,
-    turbopackRemoveUnusedExports: true,
   },
   typescript: {
     ignoreBuildErrors: true,
